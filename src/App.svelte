@@ -3,8 +3,8 @@
   import PanelGrid from './components/layout/PanelGrid.svelte';
   import VariableSelector from './components/shared/VariableSelector.svelte';
   import ColorLegend from './components/shared/ColorLegend.svelte';
-  import { dataStore } from './lib/stores/dataStore';
-  import { panelStore } from './lib/stores/panelStore';
+  import { dataStore } from './lib/stores/dataStore.svelte';
+  import { panelStore } from './lib/stores/panelStore.svelte';
   import './lib/data/jsonLoader'; // register the JSON loader
   import { getLoader } from './lib/data/loader';
   import { onMount } from 'svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { panelStore } from '../../lib/stores/panelStore';
+  import { panelStore } from '../../lib/stores/panelStore.svelte';
   import PanelWrapper from './PanelWrapper.svelte';
   import CesiumView from '../cesium/CesiumView.svelte';
   import SlicerView from '../slicer/SlicerView.svelte';

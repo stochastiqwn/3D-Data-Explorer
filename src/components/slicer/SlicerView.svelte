@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-  import { dataStore } from '../../lib/stores/dataStore';
+  import { dataStore } from '../../lib/stores/dataStore.svelte';
   import HeatmapOverlay from './HeatmapOverlay.svelte';
   import type { Vec3 } from '../../lib/utils/math';
 

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { createCesiumViewer } from './cesiumConfig';
   import { WeatherLayer } from './WeatherLayer';
-  import { dataStore } from '../../lib/stores/dataStore';
+  import { dataStore } from '../../lib/stores/dataStore.svelte';
   import type { Viewer } from 'cesium';
 
   let container: HTMLElement;

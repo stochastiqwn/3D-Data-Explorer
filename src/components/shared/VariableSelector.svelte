@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dataStore } from '../../lib/stores/dataStore';
+  import { dataStore } from '../../lib/stores/dataStore.svelte';
   import { ALL_VARIABLES, type DataVariable } from '../../lib/types/weather';
 
   const labels: Record<DataVariable, string> = {

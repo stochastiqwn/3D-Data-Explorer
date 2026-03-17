@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { panelStore } from '../../lib/stores/panelStore';
+  import { panelStore } from '../../lib/stores/panelStore.svelte';
   import type { PanelType } from '../../lib/types/panels';
 
   function addPanel(type: PanelType) {

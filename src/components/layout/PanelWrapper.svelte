@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PanelConfig } from '../../lib/types/panels';
-  import { panelStore } from '../../lib/stores/panelStore';
+  import { panelStore } from '../../lib/stores/panelStore.svelte';
   import type { Snippet } from 'svelte';
 
   let {

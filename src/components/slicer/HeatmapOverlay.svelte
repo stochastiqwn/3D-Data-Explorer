@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { dataStore } from '../../lib/stores/dataStore';
+  import { dataStore } from '../../lib/stores/dataStore.svelte';
   import { valuesToImageData } from '../../lib/color/scales';
 
   let canvas: HTMLCanvasElement;
