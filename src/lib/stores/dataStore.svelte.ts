@@ -9,10 +9,11 @@ function createDataStore() {
     normal: [0, 0, 1],
   });
   let sliceResolution = $state(64);
+  let sliceResult = $state<SliceResult | null>(null);
 
-  const sliceResult = $derived<SliceResult | null>(
-    grid ? sliceGrid(grid, slicePlane, activeVariable, sliceResolution) : null
-  );
+  function computeSlice() {
+    sliceResult = grid ? sliceGrid(grid, slicePlane, activeVariable, sliceResolution) : null;
+  }
 
   return {
     get grid() { return grid; },
@@ -28,6 +29,9 @@ function createDataStore() {
     set sliceResolution(r: number) { sliceResolution = r; },
 
     get sliceResult() { return sliceResult; },
+
+    /** Call explicitly to recompute the slice — avoids reactive loops */
+    computeSlice,
   };
 }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { dataStore } from '../../lib/stores/dataStore.svelte';
@@ -61,11 +61,11 @@
   }
 
   function updateSlicePlane() {
-    const grid = dataStore.grid;
+    const grid = untrack(() => dataStore.grid);
     if (!grid) return;
 
     const { bounds } = grid;
-    const normal = dataStore.slicePlane.normal;
+    const normal = untrack(() => dataStore.slicePlane.normal);
 
     // Position the slice plane based on offset along the normal
     const center = new THREE.Vector3(
@@ -84,12 +84,15 @@
     const diag = extent.length();
     const pos = center.clone().add(normalVec.clone().multiplyScalar((planeOffset - 0.5) * diag));
 
-    sliceMesh.position.copy(pos.clone().multiplyScalar(0.1)); // scale to scene units
-    sliceMesh.lookAt(sliceMesh.position.clone().add(normalVec));
+    if (sliceMesh) {
+      sliceMesh.position.copy(pos.clone().multiplyScalar(0.1)); // scale to scene units
+      sliceMesh.lookAt(sliceMesh.position.clone().add(normalVec));
+    }
 
-    // Update data store slice plane
+    // Update data store slice plane and recompute slice
     const newOrigin: Vec3 = [pos.x, pos.y, pos.z];
     dataStore.slicePlane = { origin: newOrigin, normal: [...normal] as Vec3 };
+    dataStore.computeSlice();
   }
 
   function animate() {
@@ -136,12 +139,14 @@
   $effect(() => {
     const grid = dataStore.grid;
     if (grid && boundingBox) {
-      const { bounds } = grid;
-      const sx = (bounds.lon[1] - bounds.lon[0]) * 0.1;
-      const sy = (bounds.lat[1] - bounds.lat[0]) * 0.1;
-      const sz = (bounds.alt[1] - bounds.alt[0]) * 0.1;
-      boundingBox.scale.set(sx || 1, sy || 1, sz || 1);
-      updateSlicePlane();
+      untrack(() => {
+        const { bounds } = grid;
+        const sx = (bounds.lon[1] - bounds.lon[0]) * 0.1;
+        const sy = (bounds.lat[1] - bounds.lat[0]) * 0.1;
+        const sz = (bounds.alt[1] - bounds.alt[0]) * 0.1;
+        boundingBox.scale.set(sx || 1, sy || 1, sz || 1);
+        updateSlicePlane();
+      });
     }
   });
 </script>

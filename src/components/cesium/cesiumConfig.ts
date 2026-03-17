@@ -1,8 +1,4 @@
-import { Ion, Viewer, type Viewer as ViewerType } from 'cesium';
-
-// Default Cesium ion token — users should replace with their own
-// This uses the default community token for development
-Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlYWE1OWUxNy1mMWZiLTQzYjYtYTQ0OS1kMWFjYmFkNjc5YzciLCJpZCI6NTc3MzMsImlhdCI6MTYyNzg0NTE4Mn0.XcKpgANiY19MC4bdFUXMVEBToBmqS8kuYpUlxJHYZxk';
+import { Viewer, OpenStreetMapImageryProvider, type Viewer as ViewerType } from 'cesium';
 
 export interface CesiumViewerOptions {
   container: HTMLElement;
@@ -23,7 +19,15 @@ export function createCesiumViewer(options: CesiumViewerOptions): ViewerType {
     scene3DOnly: true,
     requestRenderMode: true,
     maximumRenderTimeChange: Infinity,
+    baseLayer: false, // disable default Ion imagery
   });
+
+  // Use OpenStreetMap tiles instead of Cesium Ion
+  viewer.imageryLayers.addImageryProvider(
+    new OpenStreetMapImageryProvider({
+      url: 'https://tile.openstreetmap.org/',
+    })
+  );
 
   // Remove default credit display clutter
   (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';

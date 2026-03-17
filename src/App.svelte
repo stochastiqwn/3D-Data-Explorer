@@ -7,7 +7,7 @@
   import { panelStore } from './lib/stores/panelStore.svelte';
   import './lib/data/jsonLoader'; // register the JSON loader
   import { getLoader } from './lib/data/loader';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
 
   let dataMin = $state(0);
   let dataMax = $state(1);
