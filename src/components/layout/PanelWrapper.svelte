@@ -11,69 +11,100 @@
     children: Snippet;
   } = $props();
 
-  let dragging = $state(false);
-  let dragStartX = 0;
-  let dragStartY = 0;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let resizeStartX = 0;
+  let resizeStartY = 0;
+  let resizeStartW = 0;
+  let resizeStartH = 0;
+
+  function focus() {
+    panelStore.focusPanel(panel.id);
+  }
 
   function onDragStart(e: MouseEvent) {
-    dragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
+    if (panel.maximized) return;
+    e.preventDefault();
+    focus();
+    dragOffsetX = e.clientX - panel.x;
+    dragOffsetY = e.clientY - panel.y;
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragEnd);
   }
 
   function onDragMove(e: MouseEvent) {
-    // Visual feedback handled by CSS class
+    panelStore.movePanel(
+      panel.id,
+      Math.max(0, e.clientX - dragOffsetX),
+      Math.max(0, e.clientY - dragOffsetY),
+    );
   }
 
-  function onDragEnd(e: MouseEvent) {
-    dragging = false;
+  function onDragEnd() {
     window.removeEventListener('mousemove', onDragMove);
     window.removeEventListener('mouseup', onDragEnd);
-
-    // Determine which grid cell the mouse ended in
-    const grid = document.querySelector('.panel-grid') as HTMLElement;
-    if (!grid) return;
-    const rect = grid.getBoundingClientRect();
-    const col = Math.floor(((e.clientX - rect.left) / rect.width) * 2);
-    const row = Math.floor(((e.clientY - rect.top) / rect.height) * 2);
-    if (col >= 0 && col < 2 && row >= 0 && row < 2) {
-      panelStore.movePanel(panel.id, col, row);
-    }
   }
 
-  function close() {
-    panelStore.removePanel(panel.id);
+  function onResizeStart(e: MouseEvent) {
+    if (panel.maximized) return;
+    e.preventDefault();
+    e.stopPropagation();
+    focus();
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = panel.w;
+    resizeStartH = panel.h;
+    window.addEventListener('mousemove', onResizeMove);
+    window.addEventListener('mouseup', onResizeEnd);
   }
 
-  function toggleExpandH() {
-    panelStore.toggleSpan(panel.id, 'col');
+  function onResizeMove(e: MouseEvent) {
+    panelStore.resizePanel(
+      panel.id,
+      resizeStartW + (e.clientX - resizeStartX),
+      resizeStartH + (e.clientY - resizeStartY),
+    );
   }
 
-  function toggleExpandV() {
-    panelStore.toggleSpan(panel.id, 'row');
+  function onResizeEnd() {
+    window.removeEventListener('mousemove', onResizeMove);
+    window.removeEventListener('mouseup', onResizeEnd);
+  }
+
+  function onTitleDblClick() {
+    panelStore.maximizePanel(panel.id);
   }
 </script>
 
-<div class="panel-wrapper" class:dragging>
-  <div class="panel-titlebar" onmousedown={onDragStart} role="toolbar">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="panel-wrapper"
+  class:minimized={panel.minimized}
+  class:maximized={panel.maximized}
+  onmousedown={focus}
+>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="panel-titlebar" onmousedown={onDragStart} ondblclick={onTitleDblClick}>
     <span class="panel-title">{panel.title}</span>
     <div class="panel-controls">
-      <button class="ctrl-btn" onclick={toggleExpandH} title="Toggle horizontal span">
-        ⬌
+      <button class="ctrl-btn" onclick={() => panelStore.minimizePanel(panel.id)} title={panel.minimized ? 'Restore' : 'Minimize'}>
+        {panel.minimized ? '\u002B' : '\u2013'}
       </button>
-      <button class="ctrl-btn" onclick={toggleExpandV} title="Toggle vertical span">
-        ⬍
+      <button class="ctrl-btn" onclick={() => panelStore.maximizePanel(panel.id)} title={panel.maximized ? 'Restore' : 'Maximize'}>
+        {panel.maximized ? '\u29C9' : '\u25A1'}
       </button>
-      <button class="ctrl-btn close" onclick={close} title="Close panel">
-        ✕
+      <button class="ctrl-btn close" onclick={() => panelStore.removePanel(panel.id)} title="Close">
+        \u2715
       </button>
     </div>
   </div>
-  <div class="panel-content">
-    {@render children()}
-  </div>
+  {#if !panel.minimized}
+    <div class="panel-content">
+      {@render children()}
+    </div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="resize-handle" onmousedown={onResizeStart}></div>
+  {/if}
 </div>
 
 <style>
@@ -85,13 +116,11 @@
     border-radius: 6px;
     overflow: hidden;
     border: 1px solid var(--border);
-    transition: box-shadow 0.15s;
+    box-shadow: 0 2px 12px var(--shadow);
   }
 
-  .panel-wrapper.dragging {
-    opacity: 0.8;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    z-index: 100;
+  .panel-wrapper.minimized {
+    height: 32px;
   }
 
   .panel-titlebar {
@@ -120,22 +149,24 @@
 
   .panel-controls {
     display: flex;
-    gap: 4px;
+    gap: 2px;
   }
 
   .ctrl-btn {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 3px;
-    font-size: 12px;
+    font-size: 13px;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background 0.15s;
+    color: var(--text-secondary);
   }
 
   .ctrl-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
   }
 
   .ctrl-btn.close:hover {
@@ -147,5 +178,27 @@
     flex: 1;
     overflow: hidden;
     position: relative;
+  }
+
+  .resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    z-index: 10;
+  }
+
+  .resize-handle::after {
+    content: '';
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-secondary);
+    border-bottom: 2px solid var(--text-secondary);
+    opacity: 0.4;
   }
 </style>

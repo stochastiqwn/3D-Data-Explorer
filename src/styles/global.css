@@ -1,16 +1,38 @@
-:root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-panel: #0f3460;
-  --bg-toolbar: #1a1a2e;
-  --text-primary: #e0e0e0;
-  --text-secondary: #a0a0b0;
-  --accent: #00b4d8;
-  --accent-hover: #0096c7;
-  --border: #2a2a4a;
-  --danger: #e63946;
+/* ─── Dark theme (default) ─── */
+:root,
+[data-theme='dark'] {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-panel: #374151;
+  --bg-toolbar: #111827;
+  --bg-input: #1f2937;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --border: #374151;
+  --danger: #ef4444;
+  --shadow: rgba(0, 0, 0, 0.4);
   --panel-gap: 6px;
-  --toolbar-height: 44px;
+  --toolbar-height: 42px;
+  color-scheme: dark;
+}
+
+/* ─── Light theme ─── */
+[data-theme='light'] {
+  --bg-primary: #f3f4f6;
+  --bg-secondary: #ffffff;
+  --bg-panel: #e5e7eb;
+  --bg-toolbar: #ffffff;
+  --bg-input: #f9fafb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --border: #d1d5db;
+  --danger: #dc2626;
+  --shadow: rgba(0, 0, 0, 0.1);
+  color-scheme: light;
 }
 
 * {
@@ -19,11 +41,13 @@
   box-sizing: border-box;
 }
 
-html, body, #app {
+html,
+body,
+#app {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -39,4 +63,28 @@ button {
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+select {
+  font: inherit;
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+input[type='number'],
+input[type='text'] {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+input[type='number']:focus,
+input[type='text']:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }

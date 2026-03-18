@@ -1,18 +1,37 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { panelStore } from '../../lib/stores/panelStore.svelte';
   import PanelWrapper from './PanelWrapper.svelte';
   import CesiumView from '../cesium/CesiumView.svelte';
   import SlicerView from '../slicer/SlicerView.svelte';
   import HeatmapPanel from '../heatmap/HeatmapPanel.svelte';
+  import IntegralHeatmapPanel from '../heatmap/IntegralHeatmapPanel.svelte';
+
+  let container: HTMLElement;
+
+  onMount(() => {
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) {
+        panelStore.setContainerSize(width, height);
+        panelStore.tileAll();
+      }
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  });
 </script>
 
-<div class="panel-grid">
+<div class="panel-container" bind:this={container}>
   {#each panelStore.panels as panel (panel.id)}
     <div
-      class="grid-cell"
+      class="floating-panel"
       style="
-        grid-column: {panel.col + 1} / span {panel.colSpan};
-        grid-row: {panel.row + 1} / span {panel.rowSpan};
+        left: {panel.x}px;
+        top: {panel.y}px;
+        width: {panel.w}px;
+        height: {panel.minimized ? 32 : panel.h}px;
+        z-index: {panel.zIndex};
       "
     >
       <PanelWrapper {panel}>
@@ -22,6 +41,8 @@
           <SlicerView />
         {:else if panel.type === 'heatmap'}
           <HeatmapPanel />
+        {:else if panel.type === 'integral'}
+          <IntegralHeatmapPanel />
         {/if}
       </PanelWrapper>
     </div>
@@ -29,31 +50,26 @@
 
   {#if panelStore.panels.length === 0}
     <div class="empty-state">
-      <p>No panels open. Use the toolbar buttons above to add panels.</p>
+      <p>No panels open. Use the toolbar buttons to add panels.</p>
     </div>
   {/if}
 </div>
 
 <style>
-  .panel-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: var(--panel-gap);
-    padding: var(--panel-gap);
+  .panel-container {
+    position: relative;
     flex: 1;
     overflow: hidden;
+    background: var(--bg-primary);
   }
 
-  .grid-cell {
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
+  .floating-panel {
+    position: absolute;
   }
 
   .empty-state {
-    grid-column: 1 / span 2;
-    grid-row: 1 / span 2;
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -1,77 +1,120 @@
 import { type PanelConfig, type PanelType, PANEL_DEFAULTS } from '../types/panels';
 
 let nextId = 0;
+let topZ = 1;
 
 function createPanelStore() {
   let panels = $state<PanelConfig[]>([]);
+  let containerW = $state(1200);
+  let containerH = $state(700);
 
-  function findFreeCell(): { col: number; row: number } | null {
-    const occupied = new Set(
-      panels.flatMap((p) => {
-        const cells: string[] = [];
-        for (let c = p.col; c < p.col + p.colSpan; c++) {
-          for (let r = p.row; r < p.row + p.rowSpan; r++) {
-            cells.push(`${c},${r}`);
-          }
-        }
-        return cells;
-      })
-    );
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 2; c++) {
-        if (!occupied.has(`${c},${r}`)) return { col: c, row: r };
-      }
-    }
-    return null;
+  function tilePosition(index: number, total: number): { x: number; y: number; w: number; h: number } {
+    const gap = 6;
+    const cols = total <= 1 ? 1 : 2;
+    const rows = Math.ceil(total / cols);
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const cellW = (containerW - gap * (cols + 1)) / cols;
+    const cellH = (containerH - gap * (rows + 1)) / rows;
+    return {
+      x: gap + col * (cellW + gap),
+      y: gap + row * (cellH + gap),
+      w: cellW,
+      h: cellH,
+    };
+  }
+
+  function retile() {
+    const visible = panels.filter((p) => !p.minimized && !p.maximized);
+    visible.forEach((p, i) => {
+      const pos = tilePosition(i, visible.length);
+      p.x = pos.x;
+      p.y = pos.y;
+      p.w = pos.w;
+      p.h = pos.h;
+    });
+    panels = [...panels];
   }
 
   return {
-    get panels() {
-      return panels;
+    get panels() { return panels; },
+    get containerW() { return containerW; },
+    get containerH() { return containerH; },
+
+    setContainerSize(w: number, h: number) {
+      containerW = w;
+      containerH = h;
     },
 
     addPanel(type: PanelType): PanelConfig | null {
-      const cell = findFreeCell();
-      if (!cell) return null;
-
+      const pos = tilePosition(panels.length, panels.length + 1);
+      topZ++;
       const panel: PanelConfig = {
         id: `panel-${nextId++}`,
         type,
         title: PANEL_DEFAULTS[type].title,
-        col: cell.col,
-        row: cell.row,
-        colSpan: 1,
-        rowSpan: 1,
+        ...pos,
+        zIndex: topZ,
+        minimized: false,
+        maximized: false,
       };
       panels = [...panels, panel];
+      retile();
       return panel;
     },
 
     removePanel(id: string) {
       panels = panels.filter((p) => p.id !== id);
+      retile();
     },
 
-    updatePanel(id: string, update: Partial<Pick<PanelConfig, 'col' | 'row' | 'colSpan' | 'rowSpan'>>) {
-      panels = panels.map((p) => (p.id === id ? { ...p, ...update } : p));
+    focusPanel(id: string) {
+      topZ++;
+      panels = panels.map((p) => (p.id === id ? { ...p, zIndex: topZ } : p));
     },
 
-    movePanel(id: string, col: number, row: number) {
-      this.updatePanel(id, { col: Math.max(0, Math.min(1, col)), row: Math.max(0, Math.min(1, row)) });
+    movePanel(id: string, x: number, y: number) {
+      panels = panels.map((p) => (p.id === id ? { ...p, x, y } : p));
     },
 
-    toggleSpan(id: string, direction: 'col' | 'row') {
-      const panel = panels.find((p) => p.id === id);
-      if (!panel) return;
-      if (direction === 'col') {
-        this.updatePanel(id, { colSpan: panel.colSpan === 1 ? 2 : 1, col: panel.colSpan === 2 ? panel.col : 0 });
-      } else {
-        this.updatePanel(id, { rowSpan: panel.rowSpan === 1 ? 2 : 1, row: panel.rowSpan === 2 ? panel.row : 0 });
-      }
+    resizePanel(id: string, w: number, h: number) {
+      const target = panels.find((p) => p.id === id);
+      if (!target) return;
+      const { minW, minH } = PANEL_DEFAULTS[target.type];
+      panels = panels.map((p) =>
+        p.id === id ? { ...p, w: Math.max(minW, w), h: Math.max(minH, h) } : p,
+      );
     },
 
-    clear() {
-      panels = [];
+    minimizePanel(id: string) {
+      panels = panels.map((p) => {
+        if (p.id !== id) return p;
+        return p.minimized
+          ? { ...p, minimized: false }
+          : { ...p, minimized: true, maximized: false };
+      });
     },
+
+    maximizePanel(id: string) {
+      panels = panels.map((p) => {
+        if (p.id !== id) return p;
+        if (p.maximized) {
+          const r = p.savedRect ?? { x: 50, y: 50, w: 400, h: 300 };
+          return { ...p, maximized: false, ...r, savedRect: undefined };
+        }
+        return {
+          ...p,
+          maximized: true,
+          minimized: false,
+          savedRect: { x: p.x, y: p.y, w: p.w, h: p.h },
+          x: 0, y: 0, w: containerW, h: containerH,
+        };
+      });
+    },
+
+    tileAll() { retile(); },
+
+    clear() { panels = []; },
   };
 }
 

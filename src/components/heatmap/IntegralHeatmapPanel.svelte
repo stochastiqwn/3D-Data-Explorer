@@ -31,7 +31,7 @@
     const v = variable;
     if (!ctx) return;
 
-    const result = dataStore.computeSlice(v);
+    const result = dataStore.computeIntegral(v);
     if (!result) return;
 
     canvas.width = result.width;
@@ -62,7 +62,7 @@
         <option value={v}>{labels[v]}</option>
       {/each}
     </select>
-    <ColorLegend min={dataMin} max={dataMax} label={variable} />
+    <ColorLegend min={dataMin} max={dataMax} label="integral({variable})" />
   </div>
   <div class="heatmap-body">
     <canvas bind:this={canvas} class="heatmap-canvas"></canvas>

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { createCesiumViewer } from './cesiumConfig';
   import { WeatherLayer } from './WeatherLayer';
+  import { SlicePlaneEntity } from './SlicePlaneEntity';
   import { dataStore } from '../../lib/stores/dataStore.svelte';
   import { ALL_VARIABLES, type DataVariable } from '../../lib/types/weather';
   import type { Viewer } from 'cesium';
@@ -16,6 +17,7 @@
   let container: HTMLElement;
   let viewer: Viewer | undefined;
   let weatherLayer: WeatherLayer | undefined;
+  let slicePlaneEntity: SlicePlaneEntity | undefined;
   let variable = $state<DataVariable>('humidity');
 
   function onVarChange(e: Event) {
@@ -25,30 +27,38 @@
   onMount(() => {
     viewer = createCesiumViewer({ container });
     weatherLayer = new WeatherLayer(viewer);
+    slicePlaneEntity = new SlicePlaneEntity(viewer);
 
-    const resizeObserver = new ResizeObserver(() => {
+    const ro = new ResizeObserver(() => {
       if (viewer && !viewer.isDestroyed()) {
         viewer.resize();
         viewer.scene.requestRender();
       }
     });
-    resizeObserver.observe(container);
+    ro.observe(container);
 
     return () => {
-      resizeObserver.disconnect();
+      ro.disconnect();
+      slicePlaneEntity?.destroy();
       weatherLayer?.destroy();
-      if (viewer && !viewer.isDestroyed()) {
-        viewer.destroy();
-      }
+      if (viewer && !viewer.isDestroyed()) viewer.destroy();
     };
   });
 
-  // Update weather layer when data or variable changes
+  // Update weather layer
   $effect(() => {
     const grid = dataStore.grid;
     const v = variable;
-    if (weatherLayer && grid) {
-      weatherLayer.update(grid, v);
+    if (weatherLayer && grid) weatherLayer.update(grid, v);
+  });
+
+  // Update slice plane visualization
+  $effect(() => {
+    const _version = dataStore.sliceVersion;
+    const grid = dataStore.grid;
+    const plane = dataStore.slicePlane;
+    if (slicePlaneEntity && grid) {
+      slicePlaneEntity.update(grid, plane);
     }
   });
 </script>
@@ -85,16 +95,11 @@
   .var-select {
     padding: 3px 6px;
     border-radius: 4px;
-    background: var(--bg-secondary);
+    background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border);
     font-size: 12px;
     cursor: pointer;
-  }
-
-  .var-select:focus {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
   }
 
   .cesium-container {

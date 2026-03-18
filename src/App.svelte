@@ -3,7 +3,7 @@
   import PanelGrid from './components/layout/PanelGrid.svelte';
   import { dataStore } from './lib/stores/dataStore.svelte';
   import { panelStore } from './lib/stores/panelStore.svelte';
-  import './lib/data/jsonLoader'; // register the JSON loader
+  import './lib/data/jsonLoader';
   import { getLoader } from './lib/data/loader';
   import { onMount } from 'svelte';
 
@@ -20,18 +20,14 @@
 
     for await (const grid of loader.load('/sample-data/weather-sample.json')) {
       dataStore.grid = grid;
-      break; // single timestep for now
+      break;
     }
 
-    // Initialize slice plane at center of grid
+    // Initialize slice plane at ATL airport
     if (dataStore.grid) {
-      const { bounds } = dataStore.grid;
+      const anchor = dataStore.anchorLLA;
       dataStore.slicePlane = {
-        origin: [
-          (bounds.lon[0] + bounds.lon[1]) / 2,
-          (bounds.lat[0] + bounds.lat[1]) / 2,
-          (bounds.alt[0] + bounds.alt[1]) / 2,
-        ],
+        origin: [...anchor],
         normal: [0, 0, 1],
       };
       dataStore.notifySliceChanged();
@@ -41,22 +37,22 @@
   }
 
   onMount(() => {
+    // Open default panels: globe, slicer, heatmap, integral
+    panelStore.addPanel('cesium');
     panelStore.addPanel('slicer');
     panelStore.addPanel('heatmap');
+    panelStore.addPanel('integral');
     loadSampleData();
   });
 </script>
 
 <div class="app">
   <Toolbar />
-  <div class="status-bar">
-    {#if loading}
+  {#if loading}
+    <div class="status-bar">
       <span class="loading">Loading data...</span>
-    {/if}
-    <button class="load-btn" onclick={loadSampleData} disabled={loading}>
-      Load Sample Data
-    </button>
-  </div>
+    </div>
+  {/if}
   <PanelGrid />
 </div>
 
@@ -72,7 +68,7 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 6px 16px;
+    padding: 4px 16px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -87,24 +83,5 @@
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
-  }
-
-  .load-btn {
-    margin-left: auto;
-    padding: 4px 12px;
-    border-radius: 4px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 12px;
-    transition: background 0.15s;
-  }
-
-  .load-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-
-  .load-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 </style>
