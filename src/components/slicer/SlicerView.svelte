@@ -3,7 +3,6 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { dataStore } from '../../lib/stores/dataStore.svelte';
-  import HeatmapOverlay from './HeatmapOverlay.svelte';
   import type { Vec3 } from '../../lib/utils/math';
 
   let container: HTMLElement;
@@ -15,8 +14,21 @@
   let boundingBox: THREE.LineSegments;
   let animFrameId: number;
 
-  // Plane interaction state
-  let planeOffset = $state(0.5); // 0-1 normalized position along normal
+  // Plane controls: position along normal (0-1), pitch and yaw in degrees
+  let planeOffset = $state(0.5);
+  let pitch = $state(0);   // rotation around the local X axis (degrees)
+  let yaw = $state(0);     // rotation around the local Y axis (degrees)
+
+  function normalFromAngles(pitchDeg: number, yawDeg: number): Vec3 {
+    const p = (pitchDeg * Math.PI) / 180;
+    const y = (yawDeg * Math.PI) / 180;
+    // Start with [0,0,1] (horizontal slice), rotate by pitch then yaw
+    const nx = Math.sin(y) * Math.cos(p);
+    const ny = -Math.sin(p);
+    const nz = Math.cos(y) * Math.cos(p);
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    return [nx / len, ny / len, nz / len];
+  }
 
   function createScene(width: number, height: number) {
     scene = new THREE.Scene();
@@ -34,14 +46,14 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
 
-    // Bounding box wireframe — always a unit cube centered at origin
+    // Bounding box wireframe — unit cube centered at origin
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const edges = new THREE.EdgesGeometry(boxGeo);
     boundingBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00b4d8 }));
     scene.add(boundingBox);
 
-    // Slice plane mesh — sized to cover the unit cube
-    const planeGeo = new THREE.PlaneGeometry(1.5, 1.5);
+    // Slice plane mesh — sized to cover the unit cube diagonal
+    const planeGeo = new THREE.PlaneGeometry(1.8, 1.8);
     const planeMat = new THREE.MeshBasicMaterial({
       color: 0x00b4d8,
       transparent: true,
@@ -51,11 +63,10 @@
     sliceMesh = new THREE.Mesh(planeGeo, planeMat);
     scene.add(sliceMesh);
 
-    // Axes helper
+    // Axes helper (R=X/lon, G=Y/lat, B=Z/alt)
     const axes = new THREE.AxesHelper(0.5);
     scene.add(axes);
 
-    // Ambient light
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
   }
 
@@ -64,11 +75,10 @@
     if (!grid) return;
 
     const { bounds } = grid;
-    const normal = untrack(() => dataStore.slicePlane.normal);
-    const normalVec = new THREE.Vector3(...normal).normalize();
+    const normal = normalFromAngles(pitch, yaw);
+    const normalVec = new THREE.Vector3(...normal);
 
-    // In the 3D scene, the bounding box is a unit cube from -0.5 to 0.5.
-    // planeOffset 0→1 maps to -0.5→0.5 along the normal axis.
+    // Position in normalized scene space
     const scenePos = normalVec.clone().multiplyScalar(planeOffset - 0.5);
 
     if (sliceMesh) {
@@ -76,29 +86,28 @@
       sliceMesh.lookAt(scenePos.clone().add(normalVec));
     }
 
-    // Convert normalized offset to world coordinates for the data slicer
-    const worldOrigin: Vec3 = [
-      bounds.lon[0] + planeOffset * (bounds.lon[1] - bounds.lon[0]),
-      bounds.lat[0] + planeOffset * (bounds.lat[1] - bounds.lat[0]),
-      bounds.alt[0] + planeOffset * (bounds.alt[1] - bounds.alt[0]),
-    ];
-
-    // For a single-axis normal, only the relevant axis changes with offset.
-    // The others stay at center.
+    // Convert normalized offset to world coordinates
     const center: Vec3 = [
       (bounds.lon[0] + bounds.lon[1]) / 2,
       (bounds.lat[0] + bounds.lat[1]) / 2,
       (bounds.alt[0] + bounds.alt[1]) / 2,
     ];
-
-    const origin: Vec3 = [
-      normal[0] !== 0 ? bounds.lon[0] + planeOffset * (bounds.lon[1] - bounds.lon[0]) : center[0],
-      normal[1] !== 0 ? bounds.lat[0] + planeOffset * (bounds.lat[1] - bounds.lat[0]) : center[1],
-      normal[2] !== 0 ? bounds.alt[0] + planeOffset * (bounds.alt[1] - bounds.alt[0]) : center[2],
+    const halfSize: Vec3 = [
+      (bounds.lon[1] - bounds.lon[0]) / 2,
+      (bounds.lat[1] - bounds.lat[0]) / 2,
+      (bounds.alt[1] - bounds.alt[0]) / 2,
     ];
 
-    dataStore.slicePlane = { origin, normal: [...normal] as Vec3 };
-    dataStore.computeSlice();
+    // Offset the origin along the normal in world space
+    const t = planeOffset - 0.5; // -0.5 to 0.5
+    const origin: Vec3 = [
+      center[0] + normal[0] * halfSize[0] * 2 * t,
+      center[1] + normal[1] * halfSize[1] * 2 * t,
+      center[2] + normal[2] * halfSize[2] * 2 * t,
+    ];
+
+    dataStore.slicePlane = { origin, normal };
+    dataStore.notifySliceChanged();
   }
 
   function animate() {
@@ -141,13 +150,11 @@
     };
   });
 
-  // React to grid changes — trigger slice update
+  // React to grid changes
   $effect(() => {
     const grid = dataStore.grid;
     if (grid && boundingBox) {
-      untrack(() => {
-        updateSlicePlane();
-      });
+      untrack(() => updateSlicePlane());
     }
   });
 </script>
@@ -157,20 +164,26 @@
   <div class="scene" bind:this={container} onwheel={onWheel}></div>
   <div class="slicer-controls">
     <label class="slider-label">
-      Slice Position
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
+      Position
+      <input type="range" min="0" max="1" step="0.01"
         bind:value={planeOffset}
-        oninput={() => updateSlicePlane()}
-      />
+        oninput={() => updateSlicePlane()} />
+    </label>
+    <label class="slider-label">
+      Pitch
+      <input type="range" min="-90" max="90" step="1"
+        bind:value={pitch}
+        oninput={() => updateSlicePlane()} />
+      <span class="value">{pitch}&deg;</span>
+    </label>
+    <label class="slider-label">
+      Yaw
+      <input type="range" min="-90" max="90" step="1"
+        bind:value={yaw}
+        oninput={() => updateSlicePlane()} />
+      <span class="value">{yaw}&deg;</span>
     </label>
     <span class="hint">Shift+Scroll to move slice plane</span>
-  </div>
-  <div class="heatmap-inset">
-    <HeatmapOverlay />
   </div>
 </div>
 
@@ -197,7 +210,7 @@
     border-radius: 4px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     z-index: 10;
   }
 
@@ -205,30 +218,23 @@
     font-size: 11px;
     color: var(--text-secondary);
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: center;
+    gap: 6px;
   }
 
   .slider-label input {
-    width: 140px;
+    width: 120px;
+  }
+
+  .value {
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 
   .hint {
     font-size: 10px;
     color: var(--text-secondary);
     opacity: 0.7;
-  }
-
-  .heatmap-inset {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 200px;
-    height: 200px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-    z-index: 10;
-    background: var(--bg-secondary);
   }
 </style>

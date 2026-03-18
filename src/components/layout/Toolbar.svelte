@@ -16,6 +16,9 @@
     <button class="btn" onclick={() => addPanel('slicer')}>
       + Data Slicer
     </button>
+    <button class="btn" onclick={() => addPanel('heatmap')}>
+      + Heat Map
+    </button>
   </nav>
 </header>
 

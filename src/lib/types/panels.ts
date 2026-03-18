@@ -1,4 +1,4 @@
-export type PanelType = 'cesium' | 'slicer';
+export type PanelType = 'cesium' | 'slicer' | 'heatmap';
 
 export interface PanelConfig {
   id: string;
@@ -17,4 +17,5 @@ export interface PanelConfig {
 export const PANEL_DEFAULTS: Record<PanelType, { title: string }> = {
   cesium: { title: '3D Globe View' },
   slicer: { title: 'Data Slicer' },
+  heatmap: { title: 'Heat Map' },
 };

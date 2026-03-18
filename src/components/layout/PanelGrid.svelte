@@ -3,11 +3,7 @@
   import PanelWrapper from './PanelWrapper.svelte';
   import CesiumView from '../cesium/CesiumView.svelte';
   import SlicerView from '../slicer/SlicerView.svelte';
-
-  const panelComponent: Record<string, typeof CesiumView | typeof SlicerView> = {
-    cesium: CesiumView,
-    slicer: SlicerView,
-  };
+  import HeatmapPanel from '../heatmap/HeatmapPanel.svelte';
 </script>
 
 <div class="panel-grid">
@@ -24,6 +20,8 @@
           <CesiumView />
         {:else if panel.type === 'slicer'}
           <SlicerView />
+        {:else if panel.type === 'heatmap'}
+          <HeatmapPanel />
         {/if}
       </PanelWrapper>
     </div>
@@ -31,7 +29,7 @@
 
   {#if panelStore.panels.length === 0}
     <div class="empty-state">
-      <p>No panels open. Click <strong>+ Globe View</strong> or <strong>+ Data Slicer</strong> above to add a visualization.</p>
+      <p>No panels open. Use the toolbar buttons above to add panels.</p>
     </div>
   {/if}
 </div>

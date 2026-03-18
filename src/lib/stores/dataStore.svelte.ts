@@ -3,24 +3,25 @@ import { sliceGrid } from '../data/slicer';
 
 function createDataStore() {
   let grid = $state<WeatherGrid | null>(null);
-  let activeVariable = $state<DataVariable>('humidity');
   let slicePlane = $state<SlicePlane>({
     origin: [0, 0, 0],
     normal: [0, 0, 1],
   });
   let sliceResolution = $state(64);
-  let sliceResult = $state<SliceResult | null>(null);
+  /** Incremented each time the slice plane changes, so consumers can react */
+  let sliceVersion = $state(0);
 
-  function computeSlice() {
-    sliceResult = grid ? sliceGrid(grid, slicePlane, activeVariable, sliceResolution) : null;
+  function notifySliceChanged() {
+    sliceVersion++;
+  }
+
+  function computeSlice(variable: DataVariable): SliceResult | null {
+    return grid ? sliceGrid(grid, slicePlane, variable, sliceResolution) : null;
   }
 
   return {
     get grid() { return grid; },
     set grid(g: WeatherGrid | null) { grid = g; },
-
-    get activeVariable() { return activeVariable; },
-    set activeVariable(v: DataVariable) { activeVariable = v; },
 
     get slicePlane() { return slicePlane; },
     set slicePlane(p: SlicePlane) { slicePlane = p; },
@@ -28,9 +29,9 @@ function createDataStore() {
     get sliceResolution() { return sliceResolution; },
     set sliceResolution(r: number) { sliceResolution = r; },
 
-    get sliceResult() { return sliceResult; },
+    get sliceVersion() { return sliceVersion; },
 
-    /** Call explicitly to recompute the slice — avoids reactive loops */
+    notifySliceChanged,
     computeSlice,
   };
 }
