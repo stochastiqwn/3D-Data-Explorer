@@ -16,7 +16,6 @@
   let animFrameId: number;
 
   // Plane interaction state
-  let isDraggingPlane = $state(false);
   let planeOffset = $state(0.5); // 0-1 normalized position along normal
 
   function createScene(width: number, height: number) {
@@ -24,7 +23,7 @@
     scene.background = new THREE.Color(0x1a1a2e);
 
     camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    camera.position.set(2, 2, 2);
+    camera.position.set(1.8, 1.8, 1.8);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
@@ -35,13 +34,13 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
 
-    // Bounding box wireframe (unit cube, scaled later)
+    // Bounding box wireframe — always a unit cube centered at origin
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const edges = new THREE.EdgesGeometry(boxGeo);
     boundingBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00b4d8 }));
     scene.add(boundingBox);
 
-    // Slice plane mesh
+    // Slice plane mesh — sized to cover the unit cube
     const planeGeo = new THREE.PlaneGeometry(1.5, 1.5);
     const planeMat = new THREE.MeshBasicMaterial({
       color: 0x00b4d8,
@@ -66,32 +65,39 @@
 
     const { bounds } = grid;
     const normal = untrack(() => dataStore.slicePlane.normal);
+    const normalVec = new THREE.Vector3(...normal).normalize();
 
-    // Position the slice plane based on offset along the normal
-    const center = new THREE.Vector3(
+    // In the 3D scene, the bounding box is a unit cube from -0.5 to 0.5.
+    // planeOffset 0→1 maps to -0.5→0.5 along the normal axis.
+    const scenePos = normalVec.clone().multiplyScalar(planeOffset - 0.5);
+
+    if (sliceMesh) {
+      sliceMesh.position.copy(scenePos);
+      sliceMesh.lookAt(scenePos.clone().add(normalVec));
+    }
+
+    // Convert normalized offset to world coordinates for the data slicer
+    const worldOrigin: Vec3 = [
+      bounds.lon[0] + planeOffset * (bounds.lon[1] - bounds.lon[0]),
+      bounds.lat[0] + planeOffset * (bounds.lat[1] - bounds.lat[0]),
+      bounds.alt[0] + planeOffset * (bounds.alt[1] - bounds.alt[0]),
+    ];
+
+    // For a single-axis normal, only the relevant axis changes with offset.
+    // The others stay at center.
+    const center: Vec3 = [
       (bounds.lon[0] + bounds.lon[1]) / 2,
       (bounds.lat[0] + bounds.lat[1]) / 2,
       (bounds.alt[0] + bounds.alt[1]) / 2,
-    );
+    ];
 
-    const extent = new THREE.Vector3(
-      bounds.lon[1] - bounds.lon[0],
-      bounds.lat[1] - bounds.lat[0],
-      bounds.alt[1] - bounds.alt[0],
-    );
+    const origin: Vec3 = [
+      normal[0] !== 0 ? bounds.lon[0] + planeOffset * (bounds.lon[1] - bounds.lon[0]) : center[0],
+      normal[1] !== 0 ? bounds.lat[0] + planeOffset * (bounds.lat[1] - bounds.lat[0]) : center[1],
+      normal[2] !== 0 ? bounds.alt[0] + planeOffset * (bounds.alt[1] - bounds.alt[0]) : center[2],
+    ];
 
-    const normalVec = new THREE.Vector3(...normal).normalize();
-    const diag = extent.length();
-    const pos = center.clone().add(normalVec.clone().multiplyScalar((planeOffset - 0.5) * diag));
-
-    if (sliceMesh) {
-      sliceMesh.position.copy(pos.clone().multiplyScalar(0.1)); // scale to scene units
-      sliceMesh.lookAt(sliceMesh.position.clone().add(normalVec));
-    }
-
-    // Update data store slice plane and recompute slice
-    const newOrigin: Vec3 = [pos.x, pos.y, pos.z];
-    dataStore.slicePlane = { origin: newOrigin, normal: [...normal] as Vec3 };
+    dataStore.slicePlane = { origin, normal: [...normal] as Vec3 };
     dataStore.computeSlice();
   }
 
@@ -135,16 +141,11 @@
     };
   });
 
-  // React to grid changes — reposition bounding box
+  // React to grid changes — trigger slice update
   $effect(() => {
     const grid = dataStore.grid;
     if (grid && boundingBox) {
       untrack(() => {
-        const { bounds } = grid;
-        const sx = (bounds.lon[1] - bounds.lon[0]) * 0.1;
-        const sy = (bounds.lat[1] - bounds.lat[0]) * 0.1;
-        const sz = (bounds.alt[1] - bounds.alt[0]) * 0.1;
-        boundingBox.scale.set(sx || 1, sy || 1, sz || 1);
         updateSlicePlane();
       });
     }

@@ -1,5 +1,5 @@
 import type { WeatherGrid, SlicePlane, SliceResult, DataVariable } from '../types/weather';
-import { buildTangentBasis, vec3Add, vec3Scale, vec3Sub, lerp, clamp, type Vec3 } from '../utils/math';
+import { buildTangentBasis, vec3Add, vec3Scale, lerp, clamp, type Vec3 } from '../utils/math';
 
 /**
  * Sample a value from a 3D grid using trilinear interpolation.
@@ -46,16 +46,27 @@ export function sliceGrid(
   const [uAxis, vAxis] = buildTangentBasis(plane.normal);
   const { bounds, dimensions } = grid;
 
-  // Compute the extent of the grid diagonal for sizing the slice plane
   const gridSize: Vec3 = [
     bounds.lon[1] - bounds.lon[0],
     bounds.lat[1] - bounds.lat[0],
     bounds.alt[1] - bounds.alt[0],
   ];
-  const halfExtent = Math.sqrt(gridSize[0] ** 2 + gridSize[1] ** 2 + gridSize[2] ** 2) / 2;
 
-  const cellSizeU = (2 * halfExtent) / resolution;
-  const cellSizeV = (2 * halfExtent) / resolution;
+  // Project grid extent onto each tangent axis to get proper sampling width.
+  // This avoids mixing degrees with meters in a euclidean diagonal.
+  const uExtent =
+    Math.abs(gridSize[0] * uAxis[0]) +
+    Math.abs(gridSize[1] * uAxis[1]) +
+    Math.abs(gridSize[2] * uAxis[2]);
+  const vExtent =
+    Math.abs(gridSize[0] * vAxis[0]) +
+    Math.abs(gridSize[1] * vAxis[1]) +
+    Math.abs(gridSize[2] * vAxis[2]);
+
+  if (uExtent === 0 || vExtent === 0) return null;
+
+  const cellSizeU = uExtent / resolution;
+  const cellSizeV = vExtent / resolution;
 
   const values = new Float32Array(resolution * resolution);
   const origin = plane.origin;
