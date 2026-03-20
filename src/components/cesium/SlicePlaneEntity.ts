@@ -43,13 +43,30 @@ export class SlicePlaneEntity {
     ]);
     const [uAxisN, vAxisN] = buildTangentBasis(normNormal);
 
-    // Convert tangent vectors back to world scale
+    // Convert tangent vectors back to world scale (degrees, degrees, meters)
     const uAxis: Vec3 = [uAxisN[0] * range[0], uAxisN[1] * range[1], uAxisN[2] * range[2]];
     const vAxis: Vec3 = [vAxisN[0] * range[0], vAxisN[1] * range[1], vAxisN[2] * range[2]];
 
-    // Size the plane to cover the grid extent
-    const halfU = 0.6; // slightly larger than half the grid in normalized space
-    const halfV = 0.6;
+    // Compute tangent vector lengths in meters for consistent plane sizing
+    const DEG_TO_M_LAT = 111320;
+    const cosLat = Math.cos((plane.origin[1] * Math.PI) / 180);
+    const DEG_TO_M_LON = DEG_TO_M_LAT * cosLat;
+
+    const uLenM = Math.sqrt(
+      (uAxis[0] * DEG_TO_M_LON) ** 2 +
+      (uAxis[1] * DEG_TO_M_LAT) ** 2 +
+      uAxis[2] ** 2,
+    );
+    const vLenM = Math.sqrt(
+      (vAxis[0] * DEG_TO_M_LON) ** 2 +
+      (vAxis[1] * DEG_TO_M_LAT) ** 2 +
+      vAxis[2] ** 2,
+    );
+
+    // Plane half-extent ~15 km in each tangent direction (grid radius is ~20 km)
+    const halfSizeM = 15000;
+    const halfU = uLenM > 0 ? halfSizeM / uLenM : 0.6;
+    const halfV = vLenM > 0 ? halfSizeM / vLenM : 0.6;
 
     const origin = plane.origin;
     const corners: Vec3[] = [
