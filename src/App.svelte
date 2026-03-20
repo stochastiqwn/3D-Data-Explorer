@@ -30,7 +30,6 @@
         origin: [...anchor],
         normal: [0, 0, 1],
       };
-      dataStore.notifySliceChanged();
     }
 
     loading = false;

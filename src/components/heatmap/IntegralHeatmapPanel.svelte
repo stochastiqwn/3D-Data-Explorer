@@ -13,13 +13,51 @@
   };
 
   let canvas: HTMLCanvasElement;
-  let ctx: CanvasRenderingContext2D | null = null;
+  let ctx = $state<CanvasRenderingContext2D | null>(null);
   let variable = $state<DataVariable>('humidity');
   let dataMin = $state(0);
   let dataMax = $state(1);
+  let computing = $state(false);
+
+  let worker: Worker | null = null;
+  let requestId = 0;
 
   onMount(() => {
     ctx = canvas.getContext('2d');
+    worker = new Worker(
+      new URL('../../lib/workers/slicerWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+
+    worker.onmessage = (e) => {
+      const result = e.data;
+      computing = false;
+      if (!ctx) return;
+
+      canvas.width = result.width;
+      canvas.height = result.height;
+
+      let min = Infinity, max = -Infinity;
+      for (let i = 0; i < result.values.length; i++) {
+        const val = result.values[i];
+        if (!isNaN(val)) {
+          if (val < min) min = val;
+          if (val > max) max = val;
+        }
+      }
+      if (!isFinite(min)) return;
+
+      dataMin = min;
+      dataMax = max;
+
+      const imageData = valuesToImageData(result.values, result.width, result.height, [min, max], 'turbo');
+      ctx.putImageData(imageData, 0, 0);
+    };
+
+    return () => {
+      worker?.terminate();
+      worker = null;
+    };
   });
 
   function onVarChange(e: Event) {
@@ -27,31 +65,29 @@
   }
 
   $effect(() => {
-    const _version = dataStore.sliceVersion;
+    const grid = dataStore.grid;
+    const plane = dataStore.slicePlane;
     const v = variable;
-    if (!ctx) return;
+    if (!worker || !grid) return;
 
-    const result = dataStore.computeIntegral(v);
-    if (!result) return;
+    const varData = grid.variables.get(v);
+    if (!varData) return;
 
-    canvas.width = result.width;
-    canvas.height = result.height;
+    requestId++;
+    computing = true;
 
-    let min = Infinity, max = -Infinity;
-    for (let i = 0; i < result.values.length; i++) {
-      const val = result.values[i];
-      if (!isNaN(val)) {
-        if (val < min) min = val;
-        if (val > max) max = val;
-      }
-    }
-    if (!isFinite(min)) return;
-
-    dataMin = min;
-    dataMax = max;
-
-    const imageData = valuesToImageData(result.values, result.width, result.height, [min, max], 'turbo');
-    ctx.putImageData(imageData, 0, 0);
+    worker.postMessage({
+      id: requestId,
+      type: 'integral',
+      dimensions: grid.dimensions,
+      bounds: grid.bounds,
+      variableData: varData,
+      origin: plane.origin,
+      normal: plane.normal,
+      variable: v,
+      resolution: 64,
+      numSteps: 48,
+    });
   });
 </script>
 
@@ -62,6 +98,9 @@
         <option value={v}>{labels[v]}</option>
       {/each}
     </select>
+    {#if computing}
+      <span class="computing">Computing...</span>
+    {/if}
     <ColorLegend min={dataMin} max={dataMax} label="integral({variable})" />
   </div>
   <div class="heatmap-body">
@@ -95,6 +134,17 @@
     border: 1px solid var(--border);
     font-size: 12px;
     cursor: pointer;
+  }
+
+  .computing {
+    font-size: 11px;
+    color: var(--accent);
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
 
   .heatmap-body {

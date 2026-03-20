@@ -94,7 +94,7 @@
         {panel.maximized ? '\u29C9' : '\u25A1'}
       </button>
       <button class="ctrl-btn close" onclick={() => panelStore.removePanel(panel.id)} title="Close">
-        \u2715
+        {'✕'}
       </button>
     </div>
   </div>

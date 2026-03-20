@@ -54,7 +54,6 @@
 
   // Update slice plane visualization
   $effect(() => {
-    const _version = dataStore.sliceVersion;
     const grid = dataStore.grid;
     const plane = dataStore.slicePlane;
     if (slicePlaneEntity && grid) {

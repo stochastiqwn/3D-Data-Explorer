@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { dataStore } from '../../lib/stores/dataStore.svelte';
+  import { sliceGrid } from '../../lib/data/slicer';
   import { valuesToImageData } from '../../lib/color/scales';
   import { ALL_VARIABLES, type DataVariable } from '../../lib/types/weather';
   import ColorLegend from '../shared/ColorLegend.svelte';
@@ -13,7 +14,7 @@
   };
 
   let canvas: HTMLCanvasElement;
-  let ctx: CanvasRenderingContext2D | null = null;
+  let ctx = $state<CanvasRenderingContext2D | null>(null);
   let variable = $state<DataVariable>('humidity');
   let dataMin = $state(0);
   let dataMax = $state(1);
@@ -27,11 +28,12 @@
   }
 
   $effect(() => {
-    const _version = dataStore.sliceVersion;
+    const grid = dataStore.grid;
+    const plane = dataStore.slicePlane;
     const v = variable;
-    if (!ctx) return;
+    if (!ctx || !grid) return;
 
-    const result = dataStore.computeSlice(v);
+    const result = sliceGrid(grid, plane, v, 64);
     if (!result) return;
 
     canvas.width = result.width;

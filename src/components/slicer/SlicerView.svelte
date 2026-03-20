@@ -117,7 +117,6 @@
 
     // Update the data store — plane in world coordinates
     dataStore.slicePlane = { origin: [lon, lat, alt], normal };
-    dataStore.notifySliceChanged();
   }
 
   function onLLAChange() {
