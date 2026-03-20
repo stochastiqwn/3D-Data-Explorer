@@ -119,10 +119,6 @@
     dataStore.slicePlane = { origin: [lon, lat, alt], normal };
   }
 
-  function onLLAChange() {
-    updateSlicePlane();
-  }
-
   function animate() {
     animFrameId = requestAnimationFrame(animate);
     controls.update();
@@ -155,10 +151,15 @@
     };
   });
 
-  // React to grid load
+  // React to any slicer input change (pitch, yaw, LLA, or grid load)
   $effect(() => {
+    const _p = pitch;
+    const _y = yaw;
+    const _lat = inputLat;
+    const _lon = inputLon;
+    const _alt = inputAlt;
     const grid = dataStore.grid;
-    if (grid && boundingBox) {
+    if (grid && sliceMesh) {
       untrack(() => updateSlicePlane());
     }
   });
@@ -174,15 +175,15 @@
       <div class="lla-row">
         <label class="lla-field">
           Lat
-          <input type="number" step="0.001" bind:value={inputLat} onchange={onLLAChange} />
+          <input type="number" step="0.001" bind:value={inputLat} />
         </label>
         <label class="lla-field">
           Lon
-          <input type="number" step="0.001" bind:value={inputLon} onchange={onLLAChange} />
+          <input type="number" step="0.001" bind:value={inputLon} />
         </label>
         <label class="lla-field">
           Alt (m)
-          <input type="number" step="100" bind:value={inputAlt} onchange={onLLAChange} />
+          <input type="number" step="100" bind:value={inputAlt} />
         </label>
       </div>
     </div>
@@ -192,15 +193,13 @@
       <label class="slider-label">
         Pitch
         <input type="range" min="-90" max="90" step="1"
-          bind:value={pitch}
-          oninput={() => updateSlicePlane()} />
+          bind:value={pitch} />
         <span class="value">{pitch}&deg;</span>
       </label>
       <label class="slider-label">
         Yaw
         <input type="range" min="-90" max="90" step="1"
-          bind:value={yaw}
-          oninput={() => updateSlicePlane()} />
+          bind:value={yaw} />
         <span class="value">{yaw}&deg;</span>
       </label>
     </div>
