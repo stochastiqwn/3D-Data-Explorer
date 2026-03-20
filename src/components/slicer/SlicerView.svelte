@@ -16,20 +16,27 @@
   let animFrameId: number;
 
   // Slice controls
-  let pitch = $state(0);
-  let yaw = $state(0);
+  let elevation = $state(0);
+  let azimuth = $state(0);
 
   // LLA inputs (lon, lat, alt) — default = ATL airport center altitude
   let inputLat = $state('33.6407');
   let inputLon = $state('-84.4277');
   let inputAlt = $state('2500');
 
-  function normalFromAngles(pitchDeg: number, yawDeg: number): Vec3 {
-    const p = (pitchDeg * Math.PI) / 180;
-    const y = (yawDeg * Math.PI) / 180;
-    const nx = Math.sin(y) * Math.cos(p);
-    const ny = -Math.sin(p);
-    const nz = Math.cos(y) * Math.cos(p);
+  /**
+   * Compute plane normal from elevation and azimuth angles.
+   * Coordinate system: X=lon, Y=lat, Z=alt.
+   *
+   * Elevation (0–90°): tilt from horizontal. 0° = flat, 90° = vertical.
+   * Azimuth (-180–180°): rotation around Z (alt) axis. 0° = tilt toward +Y (lat).
+   */
+  function normalFromAngles(elevDeg: number, azDeg: number): Vec3 {
+    const el = (elevDeg * Math.PI) / 180;
+    const az = (azDeg * Math.PI) / 180;
+    const nx = Math.sin(el) * Math.sin(az);
+    const ny = Math.sin(el) * Math.cos(az);
+    const nz = Math.cos(el);
     const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
     return [nx / len, ny / len, nz / len];
   }
@@ -112,12 +119,11 @@
     };
   });
 
-  // React to any slicer input change (pitch, yaw, LLA, or grid load)
-  // All reactive reads are done directly here — no untrack indirection
+  // React to any slicer input change (elevation, azimuth, LLA, or grid load)
   $effect(() => {
     const grid = dataStore.grid;
-    const p = pitch;
-    const y = yaw;
+    const el = elevation;
+    const az = azimuth;
     const lonStr = inputLon;
     const latStr = inputLat;
     const altStr = inputAlt;
@@ -128,7 +134,7 @@
     const lon = parseFloat(lonStr) || -84.4277;
     const lat = parseFloat(latStr) || 33.6407;
     const alt = parseFloat(altStr) || 2500;
-    const normal = normalFromAngles(p, y);
+    const normal = normalFromAngles(el, az);
 
     // Update anchor in store
     dataStore.anchorLLA = [lon, lat, alt];
@@ -178,16 +184,16 @@
     <div class="control-section">
       <span class="section-title">Plane Orientation</span>
       <label class="slider-label">
-        Pitch
-        <input type="range" min="-90" max="90" step="1"
-          bind:value={pitch} />
-        <span class="value">{pitch}&deg;</span>
+        Elevation
+        <input type="range" min="0" max="90" step="1"
+          bind:value={elevation} />
+        <span class="value">{elevation}&deg;</span>
       </label>
       <label class="slider-label">
-        Yaw
-        <input type="range" min="-90" max="90" step="1"
-          bind:value={yaw} />
-        <span class="value">{yaw}&deg;</span>
+        Azimuth
+        <input type="range" min="-180" max="180" step="1"
+          bind:value={azimuth} />
+        <span class="value">{azimuth}&deg;</span>
       </label>
     </div>
   </div>
