@@ -13,6 +13,7 @@
   let sliceMesh = $state<THREE.Mesh | null>(null);
   let anchorSphere = $state<THREE.Mesh | null>(null);
   let boundingBox: THREE.LineSegments;
+  let axisLabels: THREE.Sprite[] = [];
   let animFrameId: number;
 
   // Slice controls
@@ -41,6 +42,23 @@
     return [nx / len, ny / len, nz / len];
   }
 
+  function createTextSprite(text: string, color: string = '#94a3b8'): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    canvas.width = 128;
+    canvas.height = 64;
+    ctx.font = 'bold 28px monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 64, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(0.18, 0.09, 1);
+    return sprite;
+  }
+
   function createScene(width: number, height: number) {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111827);
@@ -58,12 +76,19 @@
     controls.dampingFactor = 0.1;
     controls.target.set(0.5, 0.5, 0.5);
 
-    // Bounding box — unit cube [0,1]^3
+    // Bounding box (scaled to real-world proportions when grid loads)
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const edges = new THREE.EdgesGeometry(boxGeo);
     boundingBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x3b82f6 }));
     boundingBox.position.set(0.5, 0.5, 0.5);
     scene.add(boundingBox);
+
+    // Axis labels (positioned when grid loads)
+    const lonLabel = createTextSprite('Lon', '#ef4444');
+    const latLabel = createTextSprite('Lat', '#22c55e');
+    const altLabel = createTextSprite('Alt', '#3b82f6');
+    axisLabels = [lonLabel, latLabel, altLabel];
+    axisLabels.forEach((l) => scene.add(l));
 
     // Slice plane mesh
     const planeGeo = new THREE.PlaneGeometry(2, 2);
@@ -82,8 +107,6 @@
     anchorSphere = new THREE.Mesh(sphereGeo, sphereMat);
     scene.add(anchorSphere);
 
-    // Axes: R=X(lon) G=Y(lat) B=Z(alt)
-    scene.add(new THREE.AxesHelper(0.3));
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
   }
 
@@ -139,18 +162,51 @@
     // Update anchor in store
     dataStore.anchorLLA = [lon, lat, alt];
 
-    // Position the visual elements in normalized [0,1] space
+    // Compute metric scale so the box matches real-world proportions
     const { bounds } = grid;
+    const DEG_TO_M_LAT = 111320;
+    const midLat = (bounds.lat[0] + bounds.lat[1]) / 2;
+    const cosLat = Math.cos((midLat * Math.PI) / 180);
+    const DEG_TO_M_LON = DEG_TO_M_LAT * cosLat;
+    const lonM = (bounds.lon[1] - bounds.lon[0]) * DEG_TO_M_LON;
+    const latM = (bounds.lat[1] - bounds.lat[0]) * DEG_TO_M_LAT;
+    const altM = bounds.alt[1] - bounds.alt[0];
+    const maxM = Math.max(lonM, latM, altM);
+    const sx = lonM / maxM;
+    const sy = latM / maxM;
+    const sz = altM / maxM;
+
+    // Scale bounding box to real-world proportions
+    boundingBox.scale.set(sx, sy, sz);
+    boundingBox.position.set(sx / 2, sy / 2, sz / 2);
+
+    // Position axis labels at the midpoint of each axis edge, offset outward
+    if (axisLabels.length === 3) {
+      axisLabels[0].position.set(sx / 2, -0.07, -0.07); // Lon (X)
+      axisLabels[1].position.set(-0.07, sy / 2, -0.07); // Lat (Y)
+      axisLabels[2].position.set(-0.07, -0.07, sz / 2); // Alt (Z)
+    }
+
+    // Center orbit controls on the scaled box
+    controls.target.set(sx / 2, sy / 2, sz / 2);
+
+    // Position visual elements in metric-scaled space
     const normPos = new THREE.Vector3(
-      (lon - bounds.lon[0]) / (bounds.lon[1] - bounds.lon[0]),
-      (lat - bounds.lat[0]) / (bounds.lat[1] - bounds.lat[0]),
-      (alt - bounds.alt[0]) / (bounds.alt[1] - bounds.alt[0]),
+      ((lon - bounds.lon[0]) / (bounds.lon[1] - bounds.lon[0])) * sx,
+      ((lat - bounds.lat[0]) / (bounds.lat[1] - bounds.lat[0])) * sy,
+      ((alt - bounds.alt[0]) / (bounds.alt[1] - bounds.alt[0])) * sz,
     );
 
     sphere.position.copy(normPos);
-
     mesh.position.copy(normPos);
-    const normalVec = new THREE.Vector3(...normal);
+
+    // Transform plane normal from isotropic [0,1]³ to the scaled scene
+    // (inverse-transpose of the scaling: divide by scale factors)
+    const normalVec = new THREE.Vector3(
+      normal[0] / sx,
+      normal[1] / sy,
+      normal[2] / sz,
+    ).normalize();
     mesh.lookAt(normPos.clone().add(normalVec));
 
     // Update the data store — plane in world coordinates
