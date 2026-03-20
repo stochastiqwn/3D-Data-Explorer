@@ -227,7 +227,8 @@
     bottom: 8px;
     left: 8px;
     right: 8px;
-    background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+    background: var(--bg-panel);
+    opacity: 0.95;
     backdrop-filter: blur(6px);
     padding: 8px 10px;
     border-radius: 6px;
