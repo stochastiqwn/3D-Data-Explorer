@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { dataStore } from '../../lib/stores/dataStore.svelte';
@@ -10,8 +10,8 @@
   let scene: THREE.Scene;
   let camera: THREE.PerspectiveCamera;
   let controls: OrbitControls;
-  let sliceMesh: THREE.Mesh;
-  let anchorSphere: THREE.Mesh;
+  let sliceMesh = $state<THREE.Mesh | null>(null);
+  let anchorSphere = $state<THREE.Mesh | null>(null);
   let boundingBox: THREE.LineSegments;
   let animFrameId: number;
 
@@ -32,18 +32,6 @@
     const nz = Math.cos(y) * Math.cos(p);
     const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
     return [nx / len, ny / len, nz / len];
-  }
-
-  /** Convert a world-space LLA to normalized [0,1] position in the grid */
-  function worldToNorm(lon: number, lat: number, alt: number) {
-    const grid = untrack(() => dataStore.grid);
-    if (!grid) return new THREE.Vector3(0.5, 0.5, 0.5);
-    const { bounds } = grid;
-    return new THREE.Vector3(
-      (lon - bounds.lon[0]) / (bounds.lon[1] - bounds.lon[0]),
-      (lat - bounds.lat[0]) / (bounds.lat[1] - bounds.lat[0]),
-      (alt - bounds.alt[0]) / (bounds.alt[1] - bounds.alt[0]),
-    );
   }
 
   function createScene(width: number, height: number) {
@@ -92,33 +80,6 @@
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
   }
 
-  function updateSlicePlane() {
-    const grid = untrack(() => dataStore.grid);
-    if (!grid) return;
-
-    const lon = parseFloat(inputLon) || -84.4277;
-    const lat = parseFloat(inputLat) || 33.6407;
-    const alt = parseFloat(inputAlt) || 2500;
-    const normal = normalFromAngles(pitch, yaw);
-
-    // Update anchor in store
-    dataStore.anchorLLA = [lon, lat, alt];
-
-    // Position the visual elements in normalized [0,1] space
-    const normPos = worldToNorm(lon, lat, alt);
-
-    if (anchorSphere) anchorSphere.position.copy(normPos);
-
-    if (sliceMesh) {
-      sliceMesh.position.copy(normPos);
-      const normalVec = new THREE.Vector3(...normal);
-      sliceMesh.lookAt(normPos.clone().add(normalVec));
-    }
-
-    // Update the data store — plane in world coordinates
-    dataStore.slicePlane = { origin: [lon, lat, alt], normal };
-  }
-
   function animate() {
     animFrameId = requestAnimationFrame(animate);
     controls.update();
@@ -152,16 +113,42 @@
   });
 
   // React to any slicer input change (pitch, yaw, LLA, or grid load)
+  // All reactive reads are done directly here — no untrack indirection
   $effect(() => {
-    const _p = pitch;
-    const _y = yaw;
-    const _lat = inputLat;
-    const _lon = inputLon;
-    const _alt = inputAlt;
     const grid = dataStore.grid;
-    if (grid && sliceMesh) {
-      untrack(() => updateSlicePlane());
-    }
+    const p = pitch;
+    const y = yaw;
+    const lonStr = inputLon;
+    const latStr = inputLat;
+    const altStr = inputAlt;
+    const mesh = sliceMesh;
+    const sphere = anchorSphere;
+    if (!grid || !mesh || !sphere) return;
+
+    const lon = parseFloat(lonStr) || -84.4277;
+    const lat = parseFloat(latStr) || 33.6407;
+    const alt = parseFloat(altStr) || 2500;
+    const normal = normalFromAngles(p, y);
+
+    // Update anchor in store
+    dataStore.anchorLLA = [lon, lat, alt];
+
+    // Position the visual elements in normalized [0,1] space
+    const { bounds } = grid;
+    const normPos = new THREE.Vector3(
+      (lon - bounds.lon[0]) / (bounds.lon[1] - bounds.lon[0]),
+      (lat - bounds.lat[0]) / (bounds.lat[1] - bounds.lat[0]),
+      (alt - bounds.alt[0]) / (bounds.alt[1] - bounds.alt[0]),
+    );
+
+    sphere.position.copy(normPos);
+
+    mesh.position.copy(normPos);
+    const normalVec = new THREE.Vector3(...normal);
+    mesh.lookAt(normPos.clone().add(normalVec));
+
+    // Update the data store — plane in world coordinates
+    dataStore.slicePlane = { origin: [lon, lat, alt], normal };
   });
 </script>
 
