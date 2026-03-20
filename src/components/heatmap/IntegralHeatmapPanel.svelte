@@ -76,18 +76,24 @@
     requestId++;
     computing = true;
 
+    // Copy data into plain objects/arrays so postMessage can clone them
+    const dataCopy = new Float32Array(varData);
     worker.postMessage({
       id: requestId,
       type: 'integral',
-      dimensions: grid.dimensions,
-      bounds: grid.bounds,
-      variableData: varData,
-      origin: plane.origin,
-      normal: plane.normal,
+      dimensions: { x: grid.dimensions.x, y: grid.dimensions.y, z: grid.dimensions.z },
+      bounds: {
+        lat: [grid.bounds.lat[0], grid.bounds.lat[1]],
+        lon: [grid.bounds.lon[0], grid.bounds.lon[1]],
+        alt: [grid.bounds.alt[0], grid.bounds.alt[1]],
+      },
+      variableData: dataCopy,
+      origin: [plane.origin[0], plane.origin[1], plane.origin[2]],
+      normal: [plane.normal[0], plane.normal[1], plane.normal[2]],
       variable: v,
       resolution: 64,
       numSteps: 48,
-    });
+    }, [dataCopy.buffer]);
   });
 </script>
 
