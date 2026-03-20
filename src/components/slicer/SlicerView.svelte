@@ -3,7 +3,7 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { dataStore } from '../../lib/stores/dataStore.svelte';
-  import type { Vec3 } from '../../lib/utils/math';
+  import { buildTangentBasis, type Vec3 } from '../../lib/utils/math';
 
   let container: HTMLElement;
   let renderer: THREE.WebGLRenderer;
@@ -14,98 +14,156 @@
   let anchorSphere = $state<THREE.Mesh | null>(null);
   let boundingBox: THREE.LineSegments;
   let axisLabels: THREE.Sprite[] = [];
+  let normalArrow: THREE.ArrowHelper | null = null;
+  let orientGroup: THREE.Group | null = null;
   let animFrameId: number;
 
-  // Slice controls
   let elevation = $state(0);
   let azimuth = $state(0);
-
-  // LLA inputs (lon, lat, alt) — default = ATL airport center altitude
   let inputLat = $state('33.6407');
   let inputLon = $state('-84.4277');
   let inputAlt = $state('2500');
 
+  // Corner colors: Red, Green, Blue, Yellow (matching Cesium & heatmaps)
+  const CC = [0xef4444, 0x22c55e, 0x3b82f6, 0xeab308];
+  const CP: [number, number, number][] = [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]];
+
   /**
-   * Compute plane normal from elevation and azimuth angles.
-   * Coordinate system: X=lon, Y=lat, Z=alt.
-   *
-   * Elevation (0–90°): tilt from horizontal. 0° = flat, 90° = vertical.
-   * Azimuth (-180–180°): rotation around Z (alt) axis. 0° = tilt toward +Y (lat).
+   * Normal from elevation/azimuth in real-world metric space.
+   * X=lon, Y=lat, Z=alt.
+   * Elevation 0° = horizontal, 90° = vertical.
+   * Azimuth 0° = tilt toward +Y (lat), 90° = tilt toward +X (lon).
    */
   function normalFromAngles(elevDeg: number, azDeg: number): Vec3 {
     const el = (elevDeg * Math.PI) / 180;
     const az = (azDeg * Math.PI) / 180;
-    const nx = Math.sin(el) * Math.sin(az);
-    const ny = Math.sin(el) * Math.cos(az);
-    const nz = Math.cos(el);
-    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-    return [nx / len, ny / len, nz / len];
+    return [Math.sin(el) * Math.sin(az), Math.sin(el) * Math.cos(az), Math.cos(el)];
   }
 
-  function createTextSprite(text: string, color: string = '#94a3b8'): THREE.Sprite {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    canvas.width = 128;
-    canvas.height = 64;
-    ctx.font = 'bold 28px monospace';
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 64, 32);
-    const texture = new THREE.CanvasTexture(canvas);
-    const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(0.18, 0.09, 1);
-    return sprite;
+  function makeSprite(text: string, color = '#94a3b8', w = 0.18, h = 0.09): THREE.Sprite {
+    const cv = document.createElement('canvas');
+    const cx = cv.getContext('2d')!;
+    cv.width = 128; cv.height = 64;
+    cx.font = 'bold 28px monospace';
+    cx.fillStyle = color;
+    cx.textAlign = 'center';
+    cx.textBaseline = 'middle';
+    cx.fillText(text, 64, 32);
+    const mat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false });
+    const s = new THREE.Sprite(mat);
+    s.scale.set(w, h, 1);
+    return s;
   }
 
-  function createScene(width: number, height: number) {
+  function createOrientSphere(): THREE.Group {
+    const g = new THREE.Group();
+    const r = 0.12;
+
+    // Wireframe sphere
+    g.add(new THREE.Mesh(
+      new THREE.SphereGeometry(r, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0x666666, wireframe: true, transparent: true, opacity: 0.25 }),
+    ));
+
+    // Equator circle (XY = lat-lon plane)
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0));
+    }
+    g.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xaaaaaa }),
+    ));
+
+    // Azimuth labels & ticks: 0°=+Y, 90°=+X, ±180°=-Y, -90°=-X
+    for (const [deg, label] of [[0, '0°'], [90, '90°'], [180, '±180°'], [-90, '-90°']] as [number, string][]) {
+      const rad = (deg * Math.PI) / 180;
+      const x = Math.sin(rad), y = Math.cos(rad);
+      const spr = makeSprite(label, '#aaaaaa', 0.10, 0.05);
+      spr.position.set(x * (r + 0.06), y * (r + 0.06), 0);
+      g.add(spr);
+      g.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x * r * 0.9, y * r * 0.9, 0),
+          new THREE.Vector3(x * r * 1.1, y * r * 1.1, 0),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xaaaaaa }),
+      ));
+    }
+
+    // Normal arrow (updated in $effect)
+    normalArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0),
+      r * 1.3, 0xff6600, r * 0.3, r * 0.15,
+    );
+    g.add(normalArrow);
+    return g;
+  }
+
+  function createScene(w: number, h: number) {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111827);
 
-    camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-    camera.position.set(1.6, 1.2, 1.6);
+    camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 100);
+    camera.up.set(0, 0, 1); // Z (altitude) points up
+    camera.position.set(1.5, -0.8, 0.8);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height);
+    renderer.setSize(w, h);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
-    controls.target.set(0.5, 0.5, 0.5);
+    controls.target.set(0.5, 0.5, 0.06);
 
-    // Bounding box (scaled to real-world proportions when grid loads)
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    const edges = new THREE.EdgesGeometry(boxGeo);
+    // Bounding box
+    const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
     boundingBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x3b82f6 }));
     boundingBox.position.set(0.5, 0.5, 0.5);
     scene.add(boundingBox);
 
-    // Axis labels (positioned when grid loads)
-    const lonLabel = createTextSprite('Lon', '#ef4444');
-    const latLabel = createTextSprite('Lat', '#22c55e');
-    const altLabel = createTextSprite('Alt', '#3b82f6');
-    axisLabels = [lonLabel, latLabel, altLabel];
+    // Axis labels
+    const lonL = makeSprite('Lon', '#ef4444');
+    const latL = makeSprite('Lat', '#22c55e');
+    const altL = makeSprite('Alt', '#3b82f6');
+    axisLabels = [lonL, latL, altL];
     axisLabels.forEach((l) => scene.add(l));
 
-    // Slice plane mesh
-    const planeGeo = new THREE.PlaneGeometry(2, 2);
+    // Slice plane mesh with colored corners & edges
     const planeMat = new THREE.MeshBasicMaterial({
-      color: 0x3b82f6,
-      transparent: true,
-      opacity: 0.25,
-      side: THREE.DoubleSide,
+      color: 0x3b82f6, transparent: true, opacity: 0.25, side: THREE.DoubleSide,
     });
-    sliceMesh = new THREE.Mesh(planeGeo, planeMat);
+    sliceMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), planeMat);
+    for (let i = 0; i < 4; i++) {
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 8, 8),
+        new THREE.MeshBasicMaterial({ color: CC[i] }),
+      );
+      dot.position.set(CP[i][0], CP[i][1], CP[i][2]);
+      sliceMesh.add(dot);
+      const j = (i + 1) % 4;
+      sliceMesh.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(...CP[i]), new THREE.Vector3(...CP[j]),
+        ]),
+        new THREE.LineBasicMaterial({ color: CC[i], linewidth: 2 }),
+      ));
+    }
     scene.add(sliceMesh);
 
-    // Anchor point sphere
-    const sphereGeo = new THREE.SphereGeometry(0.02, 16, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-    anchorSphere = new THREE.Mesh(sphereGeo, sphereMat);
+    // Anchor sphere
+    anchorSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.02, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xef4444 }),
+    );
     scene.add(anchorSphere);
+
+    // Orientation sphere
+    orientGroup = createOrientSphere();
+    scene.add(orientGroup);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
   }
@@ -136,13 +194,10 @@
       cancelAnimationFrame(animFrameId);
       controls.dispose();
       renderer.dispose();
-      if (renderer.domElement.parentElement) {
-        renderer.domElement.parentElement.removeChild(renderer.domElement);
-      }
+      renderer.domElement.parentElement?.removeChild(renderer.domElement);
     };
   });
 
-  // React to any slicer input change (elevation, azimuth, LLA, or grid load)
   $effect(() => {
     const grid = dataStore.grid;
     const el = elevation;
@@ -157,59 +212,66 @@
     const lon = parseFloat(lonStr) || -84.4277;
     const lat = parseFloat(latStr) || 33.6407;
     const alt = parseFloat(altStr) || 2500;
-    const normal = normalFromAngles(el, az);
 
-    // Update anchor in store
+    // Normal in real-world metric space
+    const nMetric = normalFromAngles(el, az);
+
     dataStore.anchorLLA = [lon, lat, alt];
 
-    // Compute metric scale so the box matches real-world proportions
+    // Metric scale for scene proportions
     const { bounds } = grid;
     const DEG_TO_M_LAT = 111320;
-    const midLat = (bounds.lat[0] + bounds.lat[1]) / 2;
-    const cosLat = Math.cos((midLat * Math.PI) / 180);
+    const cosLat = Math.cos(((bounds.lat[0] + bounds.lat[1]) / 2 * Math.PI) / 180);
     const DEG_TO_M_LON = DEG_TO_M_LAT * cosLat;
     const lonM = (bounds.lon[1] - bounds.lon[0]) * DEG_TO_M_LON;
     const latM = (bounds.lat[1] - bounds.lat[0]) * DEG_TO_M_LAT;
     const altM = bounds.alt[1] - bounds.alt[0];
     const maxM = Math.max(lonM, latM, altM);
-    const sx = lonM / maxM;
-    const sy = latM / maxM;
-    const sz = altM / maxM;
+    const sx = lonM / maxM, sy = latM / maxM, sz = altM / maxM;
 
-    // Scale bounding box to real-world proportions
+    // Transform metric normal → normalized [0,1]³ for slicer: n_norm = normalize(n_metric * [lonM, latM, altM])
+    const nRaw: Vec3 = [nMetric[0] * lonM, nMetric[1] * latM, nMetric[2] * altM];
+    const nLen = Math.sqrt(nRaw[0] ** 2 + nRaw[1] ** 2 + nRaw[2] ** 2) || 1;
+    const normal: Vec3 = [nRaw[0] / nLen, nRaw[1] / nLen, nRaw[2] / nLen];
+
+    // Scale bounding box
     boundingBox.scale.set(sx, sy, sz);
     boundingBox.position.set(sx / 2, sy / 2, sz / 2);
 
-    // Position axis labels at the midpoint of each axis edge, offset outward
+    // Axis labels at ends of each axis
     if (axisLabels.length === 3) {
-      axisLabels[0].position.set(sx / 2, -0.07, -0.07); // Lon (X)
-      axisLabels[1].position.set(-0.07, sy / 2, -0.07); // Lat (Y)
-      axisLabels[2].position.set(-0.07, -0.07, sz / 2); // Alt (Z)
+      axisLabels[0].position.set(sx + 0.05, sy / 2, 0);
+      axisLabels[1].position.set(sx / 2, sy + 0.05, 0);
+      axisLabels[2].position.set(0, 0, sz + 0.05);
     }
 
-    // Center orbit controls on the scaled box
     controls.target.set(sx / 2, sy / 2, sz / 2);
 
-    // Position visual elements in metric-scaled space
+    // Orientation sphere
+    if (orientGroup) {
+      orientGroup.position.set(sx + 0.35, sy / 2, sz + 0.15);
+      normalArrow?.setDirection(new THREE.Vector3(...nMetric).normalize());
+    }
+
+    // Anchor and plane positions in scaled scene
     const normPos = new THREE.Vector3(
       ((lon - bounds.lon[0]) / (bounds.lon[1] - bounds.lon[0])) * sx,
       ((lat - bounds.lat[0]) / (bounds.lat[1] - bounds.lat[0])) * sy,
       ((alt - bounds.alt[0]) / (bounds.alt[1] - bounds.alt[0])) * sz,
     );
-
     sphere.position.copy(normPos);
     mesh.position.copy(normPos);
 
-    // Transform plane normal from isotropic [0,1]³ to the scaled scene
-    // (inverse-transpose of the scaling: divide by scale factors)
-    const normalVec = new THREE.Vector3(
-      normal[0] / sx,
-      normal[1] / sy,
-      normal[2] / sz,
-    ).normalize();
-    mesh.lookAt(normPos.clone().add(normalVec));
+    // Orient plane using the slicer's tangent basis (so corners match heatmap & Cesium)
+    const [uN, vN] = buildTangentBasis(normal);
+    const col0 = new THREE.Vector3(uN[0] * sx, uN[1] * sy, uN[2] * sz).normalize();
+    let col1 = new THREE.Vector3(vN[0] * sx, vN[1] * sy, vN[2] * sz);
+    col1.sub(col0.clone().multiplyScalar(col1.dot(col0))).normalize(); // Gram-Schmidt
+    const col2 = new THREE.Vector3().crossVectors(col0, col1).normalize();
+    const m = new THREE.Matrix4();
+    m.makeBasis(col0, col1, col2);
+    mesh.setRotationFromMatrix(m);
 
-    // Update the data store — plane in world coordinates
     dataStore.slicePlane = { origin: [lon, lat, alt], normal };
   });
 </script>
@@ -241,14 +303,12 @@
       <span class="section-title">Plane Orientation</span>
       <label class="slider-label">
         Elevation
-        <input type="range" min="0" max="90" step="1"
-          bind:value={elevation} />
+        <input type="range" min="0" max="90" step="1" bind:value={elevation} />
         <span class="value">{elevation}&deg;</span>
       </label>
       <label class="slider-label">
         Azimuth
-        <input type="range" min="-180" max="180" step="1"
-          bind:value={azimuth} />
+        <input type="range" min="-180" max="180" step="1" bind:value={azimuth} />
         <span class="value">{azimuth}&deg;</span>
       </label>
     </div>
@@ -264,10 +324,7 @@
     flex-direction: column;
   }
 
-  .scene {
-    flex: 1;
-    overflow: hidden;
-  }
+  .scene { flex: 1; overflow: hidden; }
 
   .slicer-controls {
     position: absolute;
@@ -286,11 +343,7 @@
     font-size: 11px;
   }
 
-  .control-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .control-section { display: flex; flex-direction: column; gap: 4px; }
 
   .section-title {
     font-weight: 600;
@@ -300,10 +353,7 @@
     font-size: 10px;
   }
 
-  .lla-row {
-    display: flex;
-    gap: 6px;
-  }
+  .lla-row { display: flex; gap: 6px; }
 
   .lla-field {
     display: flex;
@@ -314,10 +364,7 @@
     font-size: 10px;
   }
 
-  .lla-field input {
-    width: 100%;
-    font-size: 11px;
-  }
+  .lla-field input { width: 100%; font-size: 11px; }
 
   .slider-label {
     color: var(--text-secondary);
@@ -326,10 +373,7 @@
     gap: 6px;
   }
 
-  .slider-label input[type='range'] {
-    flex: 1;
-    min-width: 0;
-  }
+  .slider-label input[type='range'] { flex: 1; min-width: 0; }
 
   .value {
     min-width: 36px;

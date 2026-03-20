@@ -74,6 +74,10 @@ function createPanelStore() {
     },
 
     movePanel(id: string, x: number, y: number) {
+      const target = panels.find((p) => p.id === id);
+      if (!target) return;
+      x = Math.max(0, Math.min(containerW - target.w, x));
+      y = Math.max(0, Math.min(containerH - target.h, y));
       panels = panels.map((p) => (p.id === id ? { ...p, x, y } : p));
     },
 
@@ -81,9 +85,9 @@ function createPanelStore() {
       const target = panels.find((p) => p.id === id);
       if (!target) return;
       const { minW, minH } = PANEL_DEFAULTS[target.type];
-      panels = panels.map((p) =>
-        p.id === id ? { ...p, w: Math.max(minW, w), h: Math.max(minH, h) } : p,
-      );
+      w = Math.max(minW, Math.min(containerW - target.x, w));
+      h = Math.max(minH, Math.min(containerH - target.y, h));
+      panels = panels.map((p) => (p.id === id ? { ...p, w, h } : p));
     },
 
     minimizePanel(id: string) {

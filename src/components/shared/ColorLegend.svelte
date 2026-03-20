@@ -14,11 +14,8 @@
   function draw() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
+    const { width, height } = canvas;
     const scale = createColorScale(scaleName, [0, width]);
-
     for (let x = 0; x < width; x++) {
       const [r, g, b] = colorStringToRGB(scale(x));
       ctx.fillStyle = `rgb(${r},${g},${b})`;
@@ -26,12 +23,9 @@
     }
   }
 
-  onMount(() => {
-    draw();
-  });
+  onMount(() => draw());
 
   $effect(() => {
-    // Re-draw when scale changes
     scaleName;
     if (canvas) draw();
   });
@@ -54,26 +48,32 @@
   .legend {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 11px;
     color: var(--text-secondary);
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
   }
 
   .legend-label {
     text-transform: uppercase;
     font-weight: 600;
     letter-spacing: 0.5px;
+    white-space: nowrap;
   }
 
   .legend-bar {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1;
+    min-width: 60px;
   }
 
   .legend-bar canvas {
     border-radius: 2px;
-    width: 200px;
+    width: 100%;
     height: 12px;
   }
 

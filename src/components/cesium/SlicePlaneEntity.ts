@@ -4,29 +4,24 @@ import {
   Cartesian3,
   Color,
   PolygonHierarchy,
-  HeightReference,
-  ClassificationType,
 } from 'cesium';
 import type { WeatherGrid, SlicePlane } from '../../lib/types/weather';
 import { buildTangentBasis, vec3Add, vec3Scale, vec3Normalize, type Vec3 } from '../../lib/utils/math';
 
-/**
- * Draws the slicer plane on the Cesium globe as a semi-transparent polygon.
- */
+const CORNER_COLORS = [Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW];
+
 export class SlicePlaneEntity {
   private viewer: Viewer;
-  private entity: Entity | null = null;
+  private entities: Entity[] = [];
 
   constructor(viewer: Viewer) {
     this.viewer = viewer;
   }
 
   update(grid: WeatherGrid, plane: SlicePlane) {
-    // Remove old entity
-    if (this.entity) {
-      this.viewer.entities.remove(this.entity);
-      this.entity = null;
-    }
+    // Remove old entities
+    for (const e of this.entities) this.viewer.entities.remove(e);
+    this.entities = [];
 
     const { bounds } = grid;
     const range: Vec3 = [
@@ -35,66 +30,72 @@ export class SlicePlaneEntity {
       bounds.alt[1] - bounds.alt[0],
     ];
 
-    // Normal is already in normalized [0,1]^3 space — use directly
     const normNormal = vec3Normalize(plane.normal);
     const [uAxisN, vAxisN] = buildTangentBasis(normNormal);
 
-    // Convert tangent vectors back to world scale (degrees, degrees, meters)
     const uAxis: Vec3 = [uAxisN[0] * range[0], uAxisN[1] * range[1], uAxisN[2] * range[2]];
     const vAxis: Vec3 = [vAxisN[0] * range[0], vAxisN[1] * range[1], vAxisN[2] * range[2]];
 
-    // Compute tangent vector lengths in meters for consistent plane sizing
+    // Metric lengths for consistent sizing
     const DEG_TO_M_LAT = 111320;
     const cosLat = Math.cos((plane.origin[1] * Math.PI) / 180);
     const DEG_TO_M_LON = DEG_TO_M_LAT * cosLat;
 
-    const uLenM = Math.sqrt(
-      (uAxis[0] * DEG_TO_M_LON) ** 2 +
-      (uAxis[1] * DEG_TO_M_LAT) ** 2 +
-      uAxis[2] ** 2,
-    );
-    const vLenM = Math.sqrt(
-      (vAxis[0] * DEG_TO_M_LON) ** 2 +
-      (vAxis[1] * DEG_TO_M_LAT) ** 2 +
-      vAxis[2] ** 2,
+    const toMetricLen = (a: Vec3) => Math.sqrt(
+      (a[0] * DEG_TO_M_LON) ** 2 + (a[1] * DEG_TO_M_LAT) ** 2 + a[2] ** 2,
     );
 
-    // Plane half-extent ~15 km in each tangent direction (grid radius is ~20 km)
     const halfSizeM = 15000;
-    const halfU = uLenM > 0 ? halfSizeM / uLenM : 0.6;
-    const halfV = vLenM > 0 ? halfSizeM / vLenM : 0.6;
+    const uLen = toMetricLen(uAxis);
+    const vLen = toMetricLen(vAxis);
+    const halfU = uLen > 0 ? halfSizeM / uLen : 0.6;
+    const halfV = vLen > 0 ? halfSizeM / vLen : 0.6;
 
     const origin = plane.origin;
-    const corners: Vec3[] = [
-      vec3Add(origin, vec3Add(vec3Scale(uAxis, -halfU), vec3Scale(vAxis, -halfV))),
-      vec3Add(origin, vec3Add(vec3Scale(uAxis, halfU), vec3Scale(vAxis, -halfV))),
-      vec3Add(origin, vec3Add(vec3Scale(uAxis, halfU), vec3Scale(vAxis, halfV))),
-      vec3Add(origin, vec3Add(vec3Scale(uAxis, -halfU), vec3Scale(vAxis, halfV))),
-    ];
+    // Corners: (-u,-v), (+u,-v), (+u,+v), (-u,+v) → Red, Green, Blue, Yellow
+    const signs: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    const corners = signs.map(([su, sv]) =>
+      vec3Add(origin, vec3Add(vec3Scale(uAxis, su * halfU), vec3Scale(vAxis, sv * halfV))),
+    );
 
-    // Convert to Cesium Cartesian3 positions (lon, lat, alt)
     const positions = corners.map((c) =>
       Cartesian3.fromDegrees(c[0], c[1], Math.max(0, c[2])),
     );
 
-    this.entity = this.viewer.entities.add({
+    // Semi-transparent fill
+    this.entities.push(this.viewer.entities.add({
       polygon: {
         hierarchy: new PolygonHierarchy(positions),
-        material: Color.fromCssColorString('#3b82f6').withAlpha(0.3),
+        material: Color.fromCssColorString('#3b82f6').withAlpha(0.25),
         perPositionHeight: true,
-        outline: true,
-        outlineColor: Color.fromCssColorString('#3b82f6').withAlpha(0.8),
-        outlineWidth: 2,
       },
-    });
+    }));
+
+    // Colored edges and corner points
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      this.entities.push(this.viewer.entities.add({
+        polyline: {
+          positions: [positions[i], positions[j]],
+          material: CORNER_COLORS[i],
+          width: 3,
+        },
+      }));
+      this.entities.push(this.viewer.entities.add({
+        position: positions[i],
+        point: {
+          pixelSize: 8,
+          color: CORNER_COLORS[i],
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      }));
+    }
 
     this.viewer.scene.requestRender();
   }
 
   destroy() {
-    if (this.entity) {
-      this.viewer.entities.remove(this.entity);
-      this.entity = null;
-    }
+    for (const e of this.entities) this.viewer.entities.remove(e);
+    this.entities = [];
   }
 }
