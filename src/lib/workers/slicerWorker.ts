@@ -89,7 +89,8 @@ function normalizeSlicePlane(origin: Vec3, normal: Vec3, bounds: WorkerRequest['
     (origin[1]-bounds.lat[0])/range[1],
     (origin[2]-bounds.alt[0])/range[2],
   ];
-  const normNormal = vec3Normalize([normal[0]*range[0], normal[1]*range[1], normal[2]*range[2]]);
+  // Normal is already in normalized [0,1]^3 space — no scaling needed
+  const normNormal = vec3Normalize(normal);
   return { normOrigin, normNormal };
 }
 

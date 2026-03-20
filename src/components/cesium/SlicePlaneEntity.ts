@@ -35,12 +35,8 @@ export class SlicePlaneEntity {
       bounds.alt[1] - bounds.alt[0],
     ];
 
-    // Compute tangent basis in normalized space
-    const normNormal = vec3Normalize([
-      plane.normal[0] * range[0],
-      plane.normal[1] * range[1],
-      plane.normal[2] * range[2],
-    ]);
+    // Normal is already in normalized [0,1]^3 space — use directly
+    const normNormal = vec3Normalize(plane.normal);
     const [uAxisN, vAxisN] = buildTangentBasis(normNormal);
 
     // Convert tangent vectors back to world scale (degrees, degrees, meters)

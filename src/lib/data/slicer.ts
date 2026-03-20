@@ -71,12 +71,9 @@ function normalizeSlicePlane(
     (plane.origin[2] - bounds.alt[0]) / range[2],
   ];
 
-  // Normals transform by (S^-1)^T = diag(range) for diagonal scaling S = diag(1/range)
-  const normNormal = vec3Normalize([
-    plane.normal[0] * range[0],
-    plane.normal[1] * range[1],
-    plane.normal[2] * range[2],
-  ]);
+  // The normal is already in normalized [0,1]^3 space (computed from pitch/yaw
+  // in the isotropic unit-cube slicer view), so no scaling is needed.
+  const normNormal = vec3Normalize(plane.normal);
 
   return { normOrigin, normNormal };
 }
